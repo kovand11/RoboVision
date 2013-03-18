@@ -7,7 +7,21 @@ using namespace std;
 using namespace cv;
 
 
-void DrawFeaturePoints(VideoCapture &Input,VideoWriter &Output,FeatureDetector &Detector)
+void readCameraMatrix(const string &fileName,Mat &cameraMatrix, Mat &distCoeffs,Size &calibratedImageSize )
+{
+    FileStorage fs(fileName, FileStorage::READ);
+    fs["image_width"] >> calibratedImageSize.width;
+    fs["image_height"] >> calibratedImageSize.height;
+    fs["distortion_coefficients"] >> distCoeffs;
+    fs["camera_matrix"] >> cameraMatrix;
+
+    if( distCoeffs.type() != CV_64F )
+        distCoeffs = Mat_<double>(distCoeffs);
+    if( cameraMatrix.type() != CV_64F )
+        cameraMatrix = Mat_<double>(cameraMatrix);
+}
+
+void drawFeaturePoints(VideoCapture &Input,VideoWriter &Output,const Ptr<FeatureDetector>& detector)
 {
 	int FrameCount=static_cast<int>(Input.get(CV_CAP_PROP_FRAME_COUNT));
 	for (int i=0;i<FrameCount;i++)
@@ -18,7 +32,7 @@ void DrawFeaturePoints(VideoCapture &Input,VideoWriter &Output,FeatureDetector &
 		Input>>TMPImage;
 		OutImage=TMPImage.clone();
 		cvtColor(TMPImage,TMPImage,CV_RGB2GRAY);
-		Detector.detect(TMPImage,TMPKeypoints);
+		detector->detect(TMPImage,TMPKeypoints);
 		drawKeypoints(OutImage,TMPKeypoints,OutImage,cv::Scalar(255,255,255));
 		Output<<OutImage;
 		cout<<i+1<<"/"<<FrameCount<<endl;
@@ -26,7 +40,7 @@ void DrawFeaturePoints(VideoCapture &Input,VideoWriter &Output,FeatureDetector &
 	return;
 }
 
-void DrawHomographySquare(VideoCapture &Input,VideoWriter &Output,FeatureDetector &Detector,DescriptorExtractor &Extractor,DescriptorMatcher &Matcher,int RefreshRate)
+void drawHomographySquare(VideoCapture &Input,VideoWriter &Output,const Ptr<FeatureDetector>& detector,const Ptr<DescriptorExtractor>& extractor,const Ptr<DescriptorMatcher>& matcher,int RefreshRate)
 {
 	int FrameCount=static_cast<int>(Input.get(CV_CAP_PROP_FRAME_COUNT));
 
@@ -48,8 +62,8 @@ void DrawHomographySquare(VideoCapture &Input,VideoWriter &Output,FeatureDetecto
 		Input>>ThisImage;
 		OutputImage=ThisImage.clone();
 		cvtColor(ThisImage,ThisImage,CV_RGB2GRAY);
-		Detector.detect(ThisImage,ThisKeypoints);
-		Extractor.compute(ThisImage,ThisKeypoints,ThisDescriptors);
+		detector->detect(ThisImage,ThisKeypoints);
+		extractor->compute(ThisImage,ThisKeypoints,ThisDescriptors);
 
 		if (i%RefreshRate==0)
 		{
@@ -60,7 +74,7 @@ void DrawHomographySquare(VideoCapture &Input,VideoWriter &Output,FeatureDetecto
 
 		if (LastKeypoints.size()>=8 && ThisKeypoints.size()>=8)
 		{
-			Matcher.match(LastDescriptors,ThisDescriptors,Matches);
+			matcher->match(LastDescriptors,ThisDescriptors,Matches);
 			vector<Point2f> LastPoints;
 			vector<Point2f> ThisPoints;
 			for (unsigned int j=0;j<Matches.size();j++)
@@ -96,9 +110,6 @@ void DrawHomographySquare(VideoCapture &Input,VideoWriter &Output,FeatureDetecto
 
 			Output<<OutputImage;			
 		}
-		else
-		{
-		}
 	}
 
 
@@ -107,22 +118,25 @@ void DrawHomographySquare(VideoCapture &Input,VideoWriter &Output,FeatureDetecto
 	return;
 }
 
-int main(int argc,char *argv[])
+void build3dModel()
 {
 
-	SurfFeatureDetector Detector(800);
-	SurfDescriptorExtractor Extractor(800);
-	FlannBasedMatcher Matcher;
+}
 
+int main(int argc,char *argv[])
+{
+	
 	map <string,string> CLP;
 
-	CLP["-src"]="D:\\drone.mp4";
-	CLP["-dst"]="D:\\output.avi";
-	CLP["-task"]="featurepoint";
-
+	CLP["-src"]="D:\\drone.mp4"; //input file
+	CLP["-dst"]="D:\\output.avi";//output file
+	CLP["-task"]="featurepoint";//task to do (featurepoint homography 3dmodel calibrate)
+	CLP["cal"]="cal.yml";//calibration file
+	CLP["-det"]="SURF"; //detector
+	CLP["-ext"]="SURF"; //extractor
+	CLP["-matc"]="FlannBased"; //matcher
 
 	string CurrKey;
-
 	for( int i = 1; i < argc; i++ )
 	{
 		string Param=string(argv[i]);
@@ -136,29 +150,44 @@ int main(int argc,char *argv[])
 		}
 	}
 
-	string InputPath=CLP["-src"];
-	string OutputPath=CLP["-dst"];
-	string Task=CLP["-task"];
+	string inputPath=CLP["-src"];
+	string outputPath=CLP["-dst"];
+	string task=CLP["-task"];
+	string calibPath=CLP["-cal"];
+	string detectorName=CLP["-det"];
+	string extractorName=CLP["-ext"];
+	string matcherName=CLP["-matc"];
 
-
-
-	if (Task=="featurepoint")
+	if (task=="featurepoint")
 	{
-		VideoCapture InputVideo(InputPath);
-		int Width=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
-		int Height=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
-		VideoWriter OutputVideo( OutputPath ,CV_FOURCC('D', 'I', 'V', 'X'),InputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
-		DrawFeaturePoints(InputVideo,OutputVideo,Detector);
+		Ptr<FeatureDetector> detector = FeatureDetector::create(detectorName);
+		VideoCapture inputVideo(inputPath);
+		int Width=static_cast<int>(inputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
+		int Height=static_cast<int>(inputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
+		VideoWriter outputVideo( outputPath ,CV_FOURCC('D', 'I', 'V', 'X'),inputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
+		drawFeaturePoints(inputVideo,outputVideo,detector);
 
 	}
-	else if (Task=="homography")
+	else if (task=="homography")
 	{
-		VideoCapture InputVideo(InputPath);
-		int Width=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
-		int Height=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
-		VideoWriter OutputVideo( OutputPath ,CV_FOURCC('D', 'I', 'V', 'X'),InputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
-		DrawHomographySquare(InputVideo,OutputVideo,Detector,Extractor,Matcher,40);
+		Ptr<FeatureDetector> detector = FeatureDetector::create(detectorName);
+		Ptr<DescriptorExtractor> extractor = DescriptorExtractor::create(extractorName);
+		Ptr<DescriptorMatcher> matcher=DescriptorMatcher::create(matcherName);
+		VideoCapture inputVideo(inputPath);
+		int Width=static_cast<int>(inputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
+		int Height=static_cast<int>(inputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
+		VideoWriter outputVideo( outputPath ,CV_FOURCC('D', 'I', 'V', 'X'),inputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
+		drawHomographySquare(inputVideo,outputVideo,detector,extractor,matcher,40);
 
+	}
+	else if (task=="3dmodel")
+	{
+		cout<<"Unimplemented: "<<task<<endl;
+
+	}
+	else if (task=="calibrate")
+	{
+		cout<<"Unimplemented: "<<task<<endl;
 	}
 
 
