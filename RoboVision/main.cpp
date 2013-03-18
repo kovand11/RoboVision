@@ -75,14 +75,13 @@ void DrawHomographySquare(VideoCapture &Input,VideoWriter &Output,FeatureDetecto
 		
 
 			std::vector<Point2f> BaseCorners(4);
-			BaseCorners[0] = cvPoint(Cols/4,Rows/4); BaseCorners[1] = cvPoint((Cols*3/4), Rows/4 );
-			BaseCorners[2] = cvPoint( (Cols*3)/4, (Rows*3)/4 ); BaseCorners[3] = cvPoint( Cols/4, (Rows*3)/4 );
+			BaseCorners[0] = cvPoint(Cols/4,Rows/4);
+			BaseCorners[1] = cvPoint((Cols*3/4), Rows/4 );
+			BaseCorners[2] = cvPoint( (Cols*3)/4, (Rows*3)/4 );
+			BaseCorners[3] = cvPoint( Cols/4, (Rows*3)/4 );
 
 			std::vector<Point2f> TransCorners(4);
-
 			perspectiveTransform( BaseCorners, TransCorners,H);
-
-
 
 			line(OutputImage, BaseCorners[0], BaseCorners[1], Scalar(0, 255, 0), 1 );
 			line(OutputImage, BaseCorners[1] , BaseCorners[2], Scalar( 0, 255, 0), 1 );
@@ -111,87 +110,59 @@ void DrawHomographySquare(VideoCapture &Input,VideoWriter &Output,FeatureDetecto
 int main(int argc,char *argv[])
 {
 
-	string InputPath;
-	string OutputPath;
-
-
-	Mat InputImage;
-	vector<Mat> InputImageVector;
-
 	SurfFeatureDetector Detector(800);
 	SurfDescriptorExtractor Extractor(800);
 	FlannBasedMatcher Matcher;
 
+	map <string,string> CLP;
 
-	for(;;)
+	CLP["-src"]="D:\\drone.mp4";
+	CLP["-dst"]="D:\\output.avi";
+	CLP["-task"]="featurepoint";
+
+
+	string CurrKey;
+
+	for( int i = 1; i < argc; i++ )
 	{
-		
-		int cmdint=0;
-		string cmdstr("");
-
-		cout << string(50, '\n');
-
-		cout<<"MENU"<<endl<<endl;
-		cout<<"11 Load Calibration"<<endl;
-		cout<<"12 Make Calibration"<<endl;
-		cout<<"13 Save Calibration"<<endl;
-		cout<<endl;
-		cout<<"21 Set Source"<<endl;
-		cout<<"22 Set Target"<<endl;
-		cout<<endl;
-		cout<<"31 Draw Featurepoints"<<endl;
-		cout<<"32 Draw Homography"<<endl;
-		cout<<endl;
-		cout<<"0 Exit"<<endl;
-		cout<<endl;
-		cout<<"Choice: "<<flush;
-		cin>>cmdint;
-
-		if (cmdint==11)
+		string Param=string(argv[i]);
+		if (Param[0]=='-')
 		{
-
+			CurrKey=Param;
 		}
-		else if (cmdint==11)
-		{		}
-		else if (cmdint==12)
-		{		}
-		else if (cmdint==13)
-		{		}
-		else if (cmdint==21)
+		else
 		{
-
-			cout<<"Source: "<<flush;
-			cin>>cmdstr;
-			InputPath=cmdstr;
-
+			CLP[CurrKey]=Param;
 		}
-		else if (cmdint==22)
-		{
-			cout<<"Target: "<<flush;
-			cin>>cmdstr;
-			OutputPath=cmdstr;
-		}
-		else if (cmdint==31)
-		{
-			VideoCapture InputVideo(InputPath);
-			int Width=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
-			int Height=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
-			VideoWriter OutputVideo( OutputPath ,CV_FOURCC('D', 'I', 'V', 'X'),InputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
-			DrawFeaturePoints(InputVideo,OutputVideo,Detector);			
-		}
-		else if (cmdint==32)
-		{
-			VideoCapture InputVideo(InputPath);
-			int Width=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
-			int Height=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
-			VideoWriter OutputVideo( OutputPath ,CV_FOURCC('D', 'I', 'V', 'X'),InputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
-			DrawHomographySquare(InputVideo,OutputVideo,Detector,Extractor,Matcher,40);			
-		}
-		else if (cmdint==0)
-		{break;		}
-		
 	}
 
-	return 0;
+	string InputPath=CLP["-src"];
+	string OutputPath=CLP["-dst"];
+	string Task=CLP["-task"];
+
+
+
+	if (Task=="featurepoint")
+	{
+		VideoCapture InputVideo(InputPath);
+		int Width=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
+		int Height=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
+		VideoWriter OutputVideo( OutputPath ,CV_FOURCC('D', 'I', 'V', 'X'),InputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
+		DrawFeaturePoints(InputVideo,OutputVideo,Detector);
+
+	}
+	else if (Task=="homography")
+	{
+		VideoCapture InputVideo(InputPath);
+		int Width=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
+		int Height=static_cast<int>(InputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
+		VideoWriter OutputVideo( OutputPath ,CV_FOURCC('D', 'I', 'V', 'X'),InputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
+		DrawHomographySquare(InputVideo,OutputVideo,Detector,Extractor,Matcher,40);
+
+	}
+
 
 }
+
+
+
