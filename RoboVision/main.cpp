@@ -21,95 +21,97 @@ void readCameraMatrix(const string &fileName,Mat &cameraMatrix, Mat &distCoeffs,
         cameraMatrix = Mat_<double>(cameraMatrix);
 }
 
-void drawFeaturePoints(VideoCapture &Input,VideoWriter &Output,const Ptr<FeatureDetector>& detector)
-{
-	int FrameCount=static_cast<int>(Input.get(CV_CAP_PROP_FRAME_COUNT));
-	for (int i=0;i<FrameCount;i++)
+void processImageSeq(const string &path,vector<Mat> &images)
+ {
+	ifstream inputStream(path+"input.txt");
+	while(!inputStream.eof())
 	{
-		Mat TMPImage;
-		Mat OutImage;
-		vector<KeyPoint> TMPKeypoints;
-		Input>>TMPImage;
-		OutImage=TMPImage.clone();
-		cvtColor(TMPImage,TMPImage,CV_RGB2GRAY);
-		detector->detect(TMPImage,TMPKeypoints);
-		drawKeypoints(OutImage,TMPKeypoints,OutImage,cv::Scalar(255,255,255));
-		Output<<OutImage;
-		cout<<i+1<<"/"<<FrameCount<<endl;
+		string line;
+		inputStream>>line;
+		images.push_back(imread(path+line));
+	}
+	inputStream.close();
+
+}
+
+void drawFeaturePoints(const vector<Mat> &inputImages,vector<Mat> &outputImages,const Ptr<FeatureDetector>& detector)
+{
+	for (size_t i=0;i<inputImages.size();i++)
+	{
+		Mat tmpImage;
+		Mat outImage;
+		vector<KeyPoint> keypoints;
+		tmpImage=inputImages[i].clone();
+		outImage=tmpImage.clone();
+		cvtColor(tmpImage,tmpImage,CV_RGB2GRAY);
+		detector->detect(tmpImage,keypoints);
+		drawKeypoints(outImage,keypoints,outImage,cv::Scalar(255,255,255));
+		outputImages.push_back(outImage);
+		cout<<i+1<<"/"<<inputImages.size()<<endl;
 	}
 	return;
 }
 
-void drawHomographySquare(VideoCapture &Input,VideoWriter &Output,const Ptr<FeatureDetector>& detector,const Ptr<DescriptorExtractor>& extractor,const Ptr<DescriptorMatcher>& matcher,int RefreshRate)
+void drawHomographySquare(const vector<Mat> &inputImages,vector<Mat> &outputImages,const Ptr<FeatureDetector>& detector,const Ptr<DescriptorExtractor>& extractor,const Ptr<DescriptorMatcher>& matcher,int RefreshRate)
 {
-	int FrameCount=static_cast<int>(Input.get(CV_CAP_PROP_FRAME_COUNT));
+	Mat image;
+	Mat outputImage;
 
-	Mat ThisImage;
-	Mat LastImage;
-	Mat OutputImage;
+	vector<KeyPoint> firstKeypoints;
+	vector<KeyPoint> keypoints;
 
-	Mat ThisDescriptors;
-	Mat LastDescriptors;
+	Mat firstDescriptors;
+	Mat descriptors;
 
-	vector<KeyPoint> ThisKeypoints;
-	vector<KeyPoint> LastKeypoints;
+	vector<DMatch> matches;
 
-	vector<DMatch> Matches;
+	image=inputImages[0].clone();
+	cvtColor(image,image,CV_RGB2GRAY);
+	detector->detect(image,firstKeypoints);
+	extractor->compute(image,firstKeypoints,firstDescriptors);
 
-	for (int i=0;i<FrameCount;i++)
+	for (size_t i=0;i<inputImages.size();i++)
 	{		
-		cout<<i+1<<"/"<<FrameCount<<endl;
-		Input>>ThisImage;
-		OutputImage=ThisImage.clone();
-		cvtColor(ThisImage,ThisImage,CV_RGB2GRAY);
-		detector->detect(ThisImage,ThisKeypoints);
-		extractor->compute(ThisImage,ThisKeypoints,ThisDescriptors);
+		image=inputImages[i].clone();
+		outputImage=image.clone();
+		cvtColor(image,image,CV_RGB2GRAY);
+		detector->detect(image,keypoints);
+		extractor->compute(image,keypoints,descriptors);
 
-		if (i%RefreshRate==0)
+		matcher->match(firstDescriptors,descriptors,matches);
+		vector<Point2f> LastPoints;
+		vector<Point2f> ThisPoints;
+		for (unsigned int j=0;j<matches.size();j++)
 		{
-			LastImage=ThisImage.clone();
-			LastKeypoints=ThisKeypoints;
-			LastDescriptors=ThisDescriptors.clone();
-		}		
-
-		if (LastKeypoints.size()>=8 && ThisKeypoints.size()>=8)
-		{
-			matcher->match(LastDescriptors,ThisDescriptors,Matches);
-			vector<Point2f> LastPoints;
-			vector<Point2f> ThisPoints;
-			for (unsigned int j=0;j<Matches.size();j++)
-			{
-				LastPoints.push_back( LastKeypoints[ Matches[j].queryIdx ].pt );
-				ThisPoints.push_back( ThisKeypoints[ Matches[j].trainIdx ].pt );
-			}
-			Mat H=findHomography(LastPoints,ThisPoints,CV_RANSAC);				
-
-			int Cols=OutputImage.cols;
-			int Rows=OutputImage.rows;
-		
-
-			std::vector<Point2f> BaseCorners(4);
-			BaseCorners[0] = cvPoint(Cols/4,Rows/4);
-			BaseCorners[1] = cvPoint((Cols*3/4), Rows/4 );
-			BaseCorners[2] = cvPoint( (Cols*3)/4, (Rows*3)/4 );
-			BaseCorners[3] = cvPoint( Cols/4, (Rows*3)/4 );
-
-			std::vector<Point2f> TransCorners(4);
-			perspectiveTransform( BaseCorners, TransCorners,H);
-
-			line(OutputImage, BaseCorners[0], BaseCorners[1], Scalar(0, 255, 0), 1 );
-			line(OutputImage, BaseCorners[1] , BaseCorners[2], Scalar( 0, 255, 0), 1 );
-			line(OutputImage, BaseCorners[2], BaseCorners[3], Scalar( 0, 255, 0), 1 );
-			line(OutputImage, BaseCorners[3], BaseCorners[0], Scalar( 0, 255, 0), 1 );
-
-			line(OutputImage, TransCorners[0], TransCorners[1], Scalar(0, 0, 255), 1 );
-			line(OutputImage, TransCorners[1], TransCorners[2], Scalar( 0, 0, 255), 1 );
-			line(OutputImage, TransCorners[2], TransCorners[3], Scalar( 0, 0, 255), 1 );
-			line(OutputImage, TransCorners[3], TransCorners[0], Scalar( 0, 0, 255), 1 );
-			
-
-			Output<<OutputImage;			
+			LastPoints.push_back( firstKeypoints[ matches[j].queryIdx ].pt );
+			ThisPoints.push_back( keypoints[ matches[j].trainIdx ].pt );
 		}
+		Mat H=findHomography(LastPoints,ThisPoints,CV_RANSAC);				
+
+		int cols=outputImage.cols;
+		int rows=outputImage.rows;		
+
+		std::vector<Point2f> BaseCorners(4);
+		BaseCorners[0] = cvPoint(cols/4,rows/4);
+		BaseCorners[1] = cvPoint((cols*3/4), rows/4 );
+		BaseCorners[2] = cvPoint( (cols*3)/4, (rows*3)/4 );
+		BaseCorners[3] = cvPoint( cols/4, (rows*3)/4 );
+
+		std::vector<Point2f> TransCorners(4);
+		perspectiveTransform( BaseCorners, TransCorners,H);
+
+		line(outputImage, BaseCorners[0], BaseCorners[1], Scalar(0, 255, 0), 1 );
+		line(outputImage, BaseCorners[1] , BaseCorners[2], Scalar( 0, 255, 0), 1 );
+		line(outputImage, BaseCorners[2], BaseCorners[3], Scalar( 0, 255, 0), 1 );
+		line(outputImage, BaseCorners[3], BaseCorners[0], Scalar( 0, 255, 0), 1 );
+
+		line(outputImage, TransCorners[0], TransCorners[1], Scalar(0, 0, 255), 1 );
+		line(outputImage, TransCorners[1], TransCorners[2], Scalar( 0, 0, 255), 1 );
+		line(outputImage, TransCorners[2], TransCorners[3], Scalar( 0, 0, 255), 1 );
+		line(outputImage, TransCorners[3], TransCorners[0], Scalar( 0, 0, 255), 1 );			
+
+		outputImages.push_back(outputImage);			
+
 	}
 
 
@@ -128,8 +130,8 @@ int main(int argc,char *argv[])
 	
 	map <string,string> CLP;
 
-	CLP["-src"]="D:\\drone.mp4"; //input file
-	CLP["-dst"]="D:\\output.avi";//output file
+	CLP["-src"]="D:\\input.txt"; //input file
+	CLP["-dst"]="D:\\output.txt";//output file
 	CLP["-task"]="featurepoint";//task to do (featurepoint homography 3dmodel calibrate)
 	CLP["cal"]="cal.yml";//calibration file
 	CLP["-det"]="SURF"; //detector
@@ -160,29 +162,50 @@ int main(int argc,char *argv[])
 
 	if (task=="featurepoint")
 	{
-		Ptr<FeatureDetector> detector = FeatureDetector::create(detectorName);
-		VideoCapture inputVideo(inputPath);
-		int Width=static_cast<int>(inputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
-		int Height=static_cast<int>(inputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
-		VideoWriter outputVideo( outputPath ,CV_FOURCC('D', 'I', 'V', 'X'),inputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
-		drawFeaturePoints(inputVideo,outputVideo,detector);
+		vector<Mat> inputImages;
+		processImageSeq(inputPath,inputImages);
+		vector<Mat> outputImages;
+		Ptr<FeatureDetector> detector = new SurfFeatureDetector(800);
+		drawFeaturePoints(inputImages,outputImages,detector);
+		ofstream outputStream(outputPath+"output.txt");
+		for (size_t i=0;i<outputImages.size();i++)
+		{
+			imwrite(outputPath+"img"+to_string(i)+".jpg",outputImages[i]);
+			outputStream<<outputPath+"img"+to_string(i)+".jpg"<<endl;
+		}
+		outputStream.close();
 
 	}
 	else if (task=="homography")
 	{
-		Ptr<FeatureDetector> detector = FeatureDetector::create(detectorName);
-		Ptr<DescriptorExtractor> extractor = DescriptorExtractor::create(extractorName);
-		Ptr<DescriptorMatcher> matcher=DescriptorMatcher::create(matcherName);
-		VideoCapture inputVideo(inputPath);
-		int Width=static_cast<int>(inputVideo.get(CV_CAP_PROP_FRAME_WIDTH));
-		int Height=static_cast<int>(inputVideo.get(CV_CAP_PROP_FRAME_HEIGHT));			
-		VideoWriter outputVideo( outputPath ,CV_FOURCC('D', 'I', 'V', 'X'),inputVideo.get(CV_CAP_PROP_FPS),Size(Width,Height));
-		drawHomographySquare(inputVideo,outputVideo,detector,extractor,matcher,40);
+		Ptr<FeatureDetector> detector = new SurfFeatureDetector(2500);
+		Ptr<DescriptorExtractor> extractor = new SurfDescriptorExtractor(2500);
+		Ptr<DescriptorMatcher> matcher=new FlannBasedMatcher();
+		vector<Mat> inputImages;
+		processImageSeq(inputPath,inputImages);
+		vector<Mat> outputImages;			
+		drawHomographySquare(inputImages,outputImages,detector,extractor,matcher,40);
+		ofstream outputStream(outputPath+"output.txt");
+		for (size_t i=0;i<outputImages.size();i++)
+		{
+			imwrite(outputPath+"img"+to_string(i)+".jpg",outputImages[i]);
+			outputStream<<outputPath+"img"+to_string(i)+".jpg"<<endl;
+		}
+		outputStream.close();
 
 	}
 	else if (task=="3dmodel")
 	{
 		cout<<"Unimplemented: "<<task<<endl;
+
+		Mat cameraMatrix;
+		Mat	distCoeffs;
+		Size calibratedImageSize;
+		readCameraMatrix(calibPath, cameraMatrix, distCoeffs, calibratedImageSize);
+		Ptr<FeatureDetector> detector = FeatureDetector::create(detectorName);
+		Ptr<DescriptorExtractor> extractor = DescriptorExtractor::create(extractorName);
+
+
 
 	}
 	else if (task=="calibrate")
