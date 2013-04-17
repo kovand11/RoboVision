@@ -14,92 +14,7 @@
 using namespace std;
 using namespace cv;
 
-/*
 
-int main(int argc,char *argv[])
-{
-	
-	
-
-	
-
-	string CurrKey;
-	for( int i = 1; i < argc; i++ )
-	{
-		string Param=string(argv[i]);
-		if (Param[0]=='-')
-		{
-			CurrKey=Param;
-		}
-		else
-		{
-			CLP[CurrKey]=Param;
-		}
-	}
-
-	string inputPath=CLP["-src"];
-	string outputPath=CLP["-dst"];
-	string task=CLP["-task"];
-	string calibPath=CLP["-cal"];
-	string detectorName=CLP["-det"];
-	string extractorName=CLP["-ext"];
-	string matcherName=CLP["-matc"];
-
-	if (task=="featurepoint")
-	{
-		vector<Mat> inputImages;
-		processImageSeq(inputPath,inputImages);
-		vector<Mat> outputImages;
-		Ptr<FeatureDetector> detector = new SurfFeatureDetector(800);
-		drawFeaturePoints(inputImages,outputImages,detector);
-		ofstream outputStream(outputPath+"output.txt");
-		for (size_t i=0;i<outputImages.size();i++)
-		{
-			imwrite(outputPath+"img"+to_string(i)+".jpg",outputImages[i]);
-			outputStream<<outputPath+"img"+to_string(i)+".jpg"<<endl;
-		}
-		outputStream.close();
-
-	}
-	else if (task=="homography")
-	{
-		Ptr<FeatureDetector> detector = new SurfFeatureDetector(2500);
-		Ptr<DescriptorExtractor> extractor = new SurfDescriptorExtractor(2500);
-		Ptr<DescriptorMatcher> matcher=new FlannBasedMatcher();
-		vector<Mat> inputImages;
-		processImageSeq(inputPath,inputImages);
-		vector<Mat> outputImages;			
-		drawHomographySquare(inputImages,outputImages,detector,extractor,matcher,40);
-		ofstream outputStream(outputPath+"output.txt");
-		for (size_t i=0;i<outputImages.size();i++)
-		{
-			imwrite(outputPath+"img"+to_string(i)+".jpg",outputImages[i]);
-			outputStream<<outputPath+"img"+to_string(i)+".jpg"<<endl;
-		}
-		outputStream.close();
-
-	}
-	else if (task=="3dmodel")
-	{
-		cout<<"Unimplemented: "<<task<<endl;
-
-		Mat cameraMatrix;
-		Mat	distCoeffs;
-		Size calibratedImageSize;
-		readCameraMatrix(calibPath, cameraMatrix, distCoeffs, calibratedImageSize);
-		Ptr<FeatureDetector> detector = FeatureDetector::create(detectorName);
-		Ptr<DescriptorExtractor> extractor = DescriptorExtractor::create(extractorName);
-
-
-
-	}
-	else if (task=="calibrate")
-	{
-		cout<<"Unimplemented: "<<task<<endl;
-	}
-
-
-}*/
 
 
 
@@ -150,44 +65,45 @@ void processImageSeq(const string &path,const string &inputfile,vector<Mat> &ima
 
 }
 
-void drawHomographySquare(const vector<Mat> &inputImages,vector<Mat> &outputImages,const Ptr<FeatureDetector>& detector,const Ptr<DescriptorExtractor>& extractor,const Ptr<DescriptorMatcher>& matcher,int RefreshRate)
+void drawHomographySquare(vector<Mat> &inputImages,vector<Mat> &outputImages,Ptr<FeatureDetector> detector,Ptr<DescriptorExtractor> extractor,const Ptr<DescriptorMatcher>& matcher,int keyframe)
 {
-	Mat image;
 	Mat outputImage;
+	vector< vector<KeyPoint> > keypointsVec;
+	vector<Mat> descriptorsVec;
 
-	vector<KeyPoint> firstKeypoints;
-	vector<KeyPoint> keypoints;
+	detector->detect(inputImages,keypointsVec);
+	extractor->compute(inputImages,keypointsVec,descriptorsVec);	
 
-	Mat firstDescriptors;
-	Mat descriptors;
-
+	vector< vector<DMatch> > forwardMatches2;
+	vector< vector<DMatch> > backwardMatches2;
+	vector<DMatch> forwardMatches;
+	vector<DMatch> backwardMatches;
 	vector<DMatch> matches;
 
-	image=inputImages[0].clone();
-	cvtColor(image,image,CV_RGB2GRAY);
-	detector->detect(image,firstKeypoints);
-	extractor->compute(image,firstKeypoints,firstDescriptors);
+	smartMatcher sMatcher=smartMatcher();
+
 
 	for (size_t i=0;i<inputImages.size();i++)
-	{		
-		image=inputImages[i].clone();
-		outputImage=image.clone();
-		cvtColor(image,image,CV_RGB2GRAY);
-		detector->detect(image,keypoints);
-		extractor->compute(image,keypoints,descriptors);
+	{
+		sMatcher.symmetryMatch2(descriptorsVec[i],descriptorsVec[keyframe],forwardMatches2,backwardMatches2,matcher);
+		sMatcher.ratioTest2(forwardMatches2,forwardMatches,0.65);
+		sMatcher.ratioTest2(backwardMatches2,backwardMatches,0.65);
+		sMatcher.symmetryTest(forwardMatches,backwardMatches,matches);
+		sMatcher.ransacTest(matches,keypointsVec[i],keypointsVec[keyframe],matches,3.0,0.98);
 
-		matcher->match(firstDescriptors,descriptors,matches);
-		vector<Point2f> LastPoints;
-		vector<Point2f> ThisPoints;
-		for (unsigned int j=0;j<matches.size();j++)
+		vector<Point2f> points;
+		vector<Point2f> keyPoints;
+
+		for (size_t j=0;j<matches.size();j++)
 		{
-			LastPoints.push_back( firstKeypoints[ matches[j].queryIdx ].pt );
-			ThisPoints.push_back( keypoints[ matches[j].trainIdx ].pt );
+			points.push_back( keypointsVec[i][ matches[j].queryIdx ].pt );
+			keyPoints.push_back( keypointsVec[keyframe][ matches[j].trainIdx ].pt );
 		}
-		Mat H=findHomography(LastPoints,ThisPoints,CV_RANSAC);				
+		Mat H=findHomography(keyPoints,points,CV_RANSAC,2.5);
 
+		outputImage=inputImages[i].clone();
 		int cols=outputImage.cols;
-		int rows=outputImage.rows;		
+		int rows=outputImage.rows;
 
 		std::vector<Point2f> BaseCorners(4);
 		BaseCorners[0] = cvPoint(cols/4,rows/4);
@@ -206,15 +122,57 @@ void drawHomographySquare(const vector<Mat> &inputImages,vector<Mat> &outputImag
 		line(outputImage, TransCorners[0], TransCorners[1], Scalar(0, 0, 255), 1 );
 		line(outputImage, TransCorners[1], TransCorners[2], Scalar( 0, 0, 255), 1 );
 		line(outputImage, TransCorners[2], TransCorners[3], Scalar( 0, 0, 255), 1 );
-		line(outputImage, TransCorners[3], TransCorners[0], Scalar( 0, 0, 255), 1 );			
+		line(outputImage, TransCorners[3], TransCorners[0], Scalar( 0, 0, 255), 1 );
 
-		outputImages.push_back(outputImage);			
 
+
+		outputImages.push_back(outputImage);
 	}
+	return;
+}
+
+void drawGoodMatches(vector<Mat> &inputImages,vector<Mat> &outputImages,Ptr<FeatureDetector> detector,Ptr<DescriptorExtractor> extractor,const Ptr<DescriptorMatcher>& matcher,int keyframe)
+{
+	Mat outputImage;
+	vector< vector<KeyPoint> > keypointsVec;
+	vector<Mat> descriptorsVec;
+
+	detector->detect(inputImages,keypointsVec);
+	extractor->compute(inputImages,keypointsVec,descriptorsVec);	
+
+	vector< vector<DMatch> > forwardMatches2;
+	vector< vector<DMatch> > backwardMatches2;
+	vector<DMatch> forwardMatches;
+	vector<DMatch> backwardMatches;
+	vector<DMatch> matches;
+
+	smartMatcher sMatcher=smartMatcher();
 
 
+	for (size_t i=0;i<inputImages.size();i++)
+	{
+		sMatcher.symmetryMatch2(descriptorsVec[i],descriptorsVec[keyframe],forwardMatches2,backwardMatches2,matcher);
+		sMatcher.ratioTest2(forwardMatches2,forwardMatches,0.85);
+		sMatcher.ratioTest2(backwardMatches2,backwardMatches,0.85);
+		sMatcher.symmetryTest(forwardMatches,backwardMatches,matches);
+		sMatcher.ransacTest(matches,keypointsVec[i],keypointsVec[keyframe],matches,3.0,0.99);
 
+		vector<Point2f> points;
+		vector<Point2f> keyPoints;
 
+		for (size_t j=0;j<matches.size();j++)
+		{
+			points.push_back( keypointsVec[i][ matches[j].queryIdx ].pt );
+			keyPoints.push_back( keypointsVec[keyframe][ matches[j].trainIdx ].pt );
+		}
+		Mat H=findHomography(keyPoints,points,CV_RANSAC,2.5);
+
+		outputImage=inputImages[i].clone();
+
+		drawMatches(inputImages[i],keypointsVec[i],inputImages[keyframe],keypointsVec[keyframe],matches,outputImage);
+
+		outputImages.push_back(outputImage);
+	}
 	return;
 }
 
@@ -224,8 +182,11 @@ void drawHomographySquare(const vector<Mat> &inputImages,vector<Mat> &outputImag
 //-srcdir: <source directory>
 //-srcfile: <txt file images newline separated>
 //-dst: <destination directory>
-//-task: featurepoint homography epipolar 
+//-task: featurepoint homography epipolar 3drecon
 //-dtxt:SURF ORB
+//-keyfr: <keyframe>
+
+
 
 
 int main(int argc,char *argv[])
@@ -238,19 +199,33 @@ int main(int argc,char *argv[])
 	CLP["-task"]="featurepoint";
 	CLP["-dtxt"]="ORB";
 
+	string currentFlag;
+	for( int i = 1; i < argc; i++ )
+	{
+		string Param=string(argv[i]);
+		if (Param[0]=='-')
+		{
+			currentFlag=Param;
+		}
+		else
+		{
+			CLP[currentFlag]=Param;
+		}
+	}
+
 	//choosing detector, extractor, and matcher 
 
 	Ptr<FeatureDetector> detector;
 	Ptr<DescriptorExtractor> extractor;
 	Ptr<DescriptorMatcher> matcher;
 
-	if (CLP["-dtxt"]=="SURF")
+	if (CLP["-dtxt"]=="surf")
 	{
-		detector = new SurfFeatureDetector(500);
-		extractor = new SurfDescriptorExtractor(500);
+		detector = new SurfFeatureDetector();
+		extractor = new SurfDescriptorExtractor();
 		matcher= new BruteForceMatcher< L2<float> >();
 	}
-	else if (CLP["-dtxt"]=="ORB")
+	else if (CLP["-dtxt"]=="orb")
 	{
 		detector = new OrbFeatureDetector();
 		extractor = new OrbDescriptorExtractor();
@@ -267,35 +242,49 @@ int main(int argc,char *argv[])
 		processImageSeq(CLP["-srcdir"],CLP["-srcfile"],inputImages);
 		vector<Mat> outputImages;
 		drawFeaturePoints(inputImages,outputImages,detector);
-		ofstream outputStream(CLP["-dst"]+"output.txt");
+		ofstream outputStream(CLP["-dst"]+"log.txt");
 		for (size_t i=0;i<outputImages.size();i++)
 		{
 			//string path=CLP["-dst"]+"img"+to_string(i)+".jpg";
-			string path="img"+to_string(i)+".jpg";
+			string path=CLP["-dst"]+"img"+to_string(i)+".jpg";
 			imwrite(path,outputImages[i]);
 			outputStream<<CLP["-dst"]+"img"+to_string(i)+".jpg"<<endl;
 		}
 		outputStream.close();
 	}
-	else
+	else if (CLP["-task"]=="homography")
 	{
 		vector<Mat> inputImages;
 		processImageSeq(CLP["-srcdir"],CLP["-srcfile"],inputImages);
 		vector<Mat> outputImages;			
-		drawHomographySquare(inputImages,outputImages,detector,extractor,matcher,40);
-		ofstream outputStream(CLP["-dst"]+"output.txt");
+		drawHomographySquare(inputImages,outputImages,detector,extractor,matcher,atoi(CLP["-keyfr"].c_str()));
+		ofstream outputStream(CLP["-dst"]+"log.txt");
 		for (size_t i=0;i<outputImages.size();i++)
 		{
-			string path="img"+to_string(i)+".jpg";
+			string path=CLP["-dst"]+"img"+to_string(i)+".jpg";
+			imwrite(path,outputImages[i]);
+			outputStream<<CLP["-dst"]+"img"+to_string(i)+".jpg"<<endl;
+		}
+		outputStream.close();
+	}
+	else if (CLP["-task"]=="matches")
+	{
+		vector<Mat> inputImages;
+		processImageSeq(CLP["-srcdir"],CLP["-srcfile"],inputImages);
+		vector<Mat> outputImages;			
+		drawGoodMatches(inputImages,outputImages,detector,extractor,matcher,10);
+		ofstream outputStream(CLP["-dst"]+"log.txt");
+		for (size_t i=0;i<outputImages.size();i++)
+		{
+			string path=CLP["-dst"]+"img"+to_string(i)+".jpg";
 			imwrite(path,outputImages[i]);
 			outputStream<<CLP["-dst"]+"img"+to_string(i)+".jpg"<<endl;
 		}
 		outputStream.close();
 	}
 
-
-
-
-
 	return 0;
 }
+
+
+

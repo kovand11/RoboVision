@@ -41,8 +41,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\Development\OpenCV\opencv-mybuild\install\include;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\Development\OpenCV\opencv-mybuild\install\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>D:\Development\OpenCV\opencv\build\include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\Development\OpenCV\opencv\build\x86\vc11\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -59,7 +59,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>opencv_calib3d244d.lib;opencv_contrib244d.lib;opencv_core244d.lib;opencv_features2d244d.lib;opencv_flann244d.lib;opencv_gpu244d.lib;opencv_highgui244d.lib;opencv_imgproc244d.lib;opencv_legacy244d.lib;opencv_ml244d.lib;opencv_nonfree244d.lib;opencv_objdetect244d.lib;opencv_photo244d.lib;opencv_stitching244d.lib;opencv_ts244d.lib;opencv_video244d.lib;opencv_videostab244d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opencv_calib3d245d.lib;opencv_contrib245d.lib;opencv_core245d.lib;opencv_features2d245d.lib;opencv_flann245d.lib;opencv_gpu245d.lib;opencv_highgui245d.lib;opencv_imgproc245d.lib;opencv_legacy245d.lib;opencv_ml245d.lib;opencv_nonfree245d.lib;opencv_objdetect245d.lib;opencv_photo245d.lib;opencv_stitching245d.lib;opencv_ts245d.lib;opencv_video245d.lib;opencv_videostab245d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Bscmake>
       <PreserveSbr>true</PreserveSbr>
